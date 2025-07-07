@@ -1,0 +1,28 @@
+{
+  "name": "page-summarizer-extension",
+  "version": "1.0.0",
+  "description": "A Chrome extension that summarizes web page content using OpenAI's GPT-4o-mini",
+  "main": "background.js",
+  "scripts": {
+    "build": "echo 'No build process required for this extension'",
+    "lint": "echo 'Linting not configured'",
+    "test": "echo 'No tests configured'"
+  },
+  "keywords": [
+    "chrome-extension",
+    "openai",
+    "summarizer",
+    "ai",
+    "gpt-4o-mini"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/page-summarizer-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/page-summarizer-extension/issues"
+  },
+  "homepage": "https://github.com/yourusername/page-summarizer-extension#readme"
+}

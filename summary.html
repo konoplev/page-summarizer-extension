@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Summary</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 30px;
+            border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .original-title {
+            color: #666;
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .original-url {
+            color: #888;
+            font-size: 14px;
+            word-break: break-all;
+            margin-bottom: 8px;
+        }
+
+        .timestamp {
+            color: #999;
+            font-size: 12px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .summary-text {
+            font-size: 16px;
+            line-height: 1.7;
+            color: #444;
+        }
+
+        .summary-text h1, .summary-text h2, .summary-text h3 {
+            color: #667eea;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        .summary-text h1 {
+            font-size: 24px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 5px;
+        }
+
+        .summary-text h2 {
+            font-size: 20px;
+        }
+
+        .summary-text h3 {
+            font-size: 18px;
+        }
+
+        .summary-text ul, .summary-text ol {
+            margin: 15px 0;
+            padding-left: 25px;
+        }
+
+        .summary-text li {
+            margin-bottom: 8px;
+        }
+
+        .summary-text p {
+            margin-bottom: 15px;
+        }
+
+        .summary-text strong {
+            color: #667eea;
+        }
+
+        .summary-text em {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 80px 40px;
+            color: #667eea;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(102, 126, 234, 0.3);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: rgba(255, 0, 0, 0.1);
+            color: #d32f2f;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #d32f2f;
+        }
+
+        .actions {
+            padding: 20px 40px;
+            background: rgba(102, 126, 234, 0.05);
+            border-top: 1px solid rgba(102, 126, 234, 0.1);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(102, 126, 234, 0.2);
+            transform: translateY(-2px);
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                border-radius: 12px;
+            }
+
+            .header, .content {
+                padding: 20px;
+            }
+
+            .actions {
+                padding: 15px 20px;
+            }
+
+            .btn {
+                font-size: 12px;
+                padding: 8px 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Page Summary</h1>
+            <div class="original-title" id="originalTitle">Loading...</div>
+            <div class="original-url" id="originalUrl"></div>
+            <div class="timestamp" id="timestamp"></div>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <div>Loading your summary...</div>
+        </div>
+
+        <div class="content" id="content" style="display: none;">
+            <div class="summary-text" id="summaryText"></div>
+        </div>
+
+        <div class="actions" id="actions" style="display: none;">
+            <button class="btn btn-primary" id="copyBtn">📋 Copy Summary</button>
+            <button class="btn btn-secondary" id="printBtn">🖨️ Print</button>
+            <a href="#" class="btn btn-secondary" id="backBtn">← Back to Page</a>
+        </div>
+
+        <div id="error" class="error" style="display: none;">
+            <strong>Error:</strong> <span id="errorMessage"></span>
+        </div>
+    </div>
+
+    <script src="summary.js"></script>
+</body>
+</html>
