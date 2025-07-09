@@ -2,15 +2,30 @@
 // This script runs on every page and can be used for additional content extraction
 // or page manipulation if needed
 
+// Cross-browser compatibility for content script
+const isFirefox = typeof browser !== 'undefined';
+const browserAPI = isFirefox ? browser : chrome;
+
 // Listen for messages from popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+browserAPI.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getPageContent') {
-    const content = extractPageContent();
-    sendResponse({ content: content });
+    try {
+      const content = extractPageContent();
+      sendResponse({ content: content });
+      return true; // Keep the message channel open for async response
+    } catch (error) {
+      sendResponse({ content: null, error: error.message });
+      return true;
+    }
   }
 });
 
 function extractPageContent() {
+  // Check if document.body exists
+  if (!document.body) {
+    return document.documentElement ? document.documentElement.textContent.trim() : '';
+  }
+  
   // Create a clone of the document to avoid modifying the original
   const bodyClone = document.body.cloneNode(true);
   
@@ -22,8 +37,12 @@ function extractPageContent() {
   ];
   
   unwantedSelectors.forEach(selector => {
-    const elements = bodyClone.querySelectorAll(selector);
-    elements.forEach(el => el.remove());
+    try {
+      const elements = bodyClone.querySelectorAll(selector);
+      elements.forEach(el => el.remove());
+    } catch (e) {
+      // Silently continue if selector fails
+    }
   });
 
   // Priority content selectors
@@ -52,8 +71,13 @@ function extractPageContent() {
   }
 
   // Fallback to body content
-  if (!content) {
-    content = bodyClone.innerText || bodyClone.textContent;
+  if (!content || content.trim().length < 50) {
+    content = bodyClone.innerText || bodyClone.textContent || '';
+  }
+  
+  // Final fallback: try document content
+  if (!content || content.trim().length < 20) {
+    content = document.body ? (document.body.innerText || document.body.textContent) : '';
   }
 
   // Clean up the content

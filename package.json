@@ -1,19 +1,29 @@
 {
   "name": "page-summarizer-extension",
   "version": "1.0.0",
-  "description": "A Chrome extension that summarizes web page content using OpenAI's GPT-4o-mini",
+  "description": "A cross-browser extension that summarizes web page content using OpenAI's GPT-4o-mini",
   "main": "background.js",
   "scripts": {
-    "build": "echo 'No build process required for this extension'",
-    "lint": "echo 'Linting not configured'",
-    "test": "echo 'No tests configured'"
+    "build:chrome": "node scripts/build-chrome.js",
+    "build:firefox": "node scripts/build-firefox.js",
+    "build:all": "npm run build:chrome && npm run build:firefox",
+    "dev:chrome": "node scripts/build-chrome.js --dev",
+    "dev:firefox": "node scripts/build-firefox.js --dev",
+    "clean": "rm -rf dist/",
+    "install-deps": "npm install"
+  },
+  "devDependencies": {
+    "fs-extra": "^11.1.1",
+    "replace-in-file": "^7.0.1"
   },
   "keywords": [
     "chrome-extension",
+    "firefox-addon",
     "openai",
     "summarizer",
     "ai",
-    "gpt-4o-mini"
+    "gpt-4o-mini",
+    "cross-browser"
   ],
   "author": "Your Name",
   "license": "MIT",

@@ -19,28 +19,28 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (summaryKey) {
         // Load summary data using the key
-        chrome.storage.local.get([summaryKey], function(result) {
+        crossBrowser.storage.local.get([summaryKey]).then(function(result) {
             if (result[summaryKey]) {
                 const summaryData = result[summaryKey];
                 displaySummary(summaryData);
                 
                 // Clean up storage
-                chrome.storage.local.remove([summaryKey]);
+                crossBrowser.storage.local.remove([summaryKey]);
             } else {
                 showError('Summary data not found. It may have expired.');
             }
         });
     } else {
         // Fallback: try to get the latest summary
-        chrome.storage.local.get(['latest_summary'], function(result) {
+        crossBrowser.storage.local.get(['latest_summary']).then(function(result) {
             if (result.latest_summary) {
-                chrome.storage.local.get([result.latest_summary], function(summaryResult) {
+                crossBrowser.storage.local.get([result.latest_summary]).then(function(summaryResult) {
                     if (summaryResult[result.latest_summary]) {
                         const summaryData = summaryResult[result.latest_summary];
                         displaySummary(summaryData);
                         
                         // Clean up storage
-                        chrome.storage.local.remove([result.latest_summary, 'latest_summary']);
+                        crossBrowser.storage.local.remove([result.latest_summary, 'latest_summary']);
                     } else {
                         showError('No summary data found. Please try generating the summary again.');
                     }
@@ -51,6 +51,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    let originalSummaryText = ''; // Store the original markdown text
+
     function displaySummary(summaryData) {
         // Update header information
         originalTitle.textContent = summaryData.title || 'Unknown Page';
@@ -58,6 +60,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const date = new Date(summaryData.timestamp);
         timestamp.textContent = `Generated on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`;
+
+        // Store the original markdown text for copying
+        originalSummaryText = summaryData.summary;
 
         // Format and display summary
         const formattedSummary = formatSummary(summaryData.summary);
@@ -68,8 +73,8 @@ document.addEventListener('DOMContentLoaded', function() {
             backBtn.href = summaryData.url;
             backBtn.addEventListener('click', function(e) {
                 e.preventDefault();
-                chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-                    chrome.tabs.update(tabs[0].id, { url: summaryData.url });
+                crossBrowser.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
+                    crossBrowser.tabs.update(tabs[0].id, { url: summaryData.url });
                 });
             });
         }
@@ -83,37 +88,89 @@ document.addEventListener('DOMContentLoaded', function() {
     function formatSummary(summary) {
         // Convert markdown-like formatting to HTML
         let formatted = summary
-            // Headers
-            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            // Escape HTML characters first (but preserve intentional HTML)
+            .replace(/&(?!amp;|lt;|gt;|quot;|#39;)/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
             
-            // Bold text
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/__(.*?)__/g, '<strong>$1</strong>')
+            // Headers (must be at start of line with optional whitespace) - handle all levels
+            // Process from most specific (6 #) to least specific (1 #) to avoid conflicts
+            .replace(/^\s*#{6}\s+(.+)$/gm, '<h6>$1</h6>')
+            .replace(/^\s*#{5}\s+(.+)$/gm, '<h5>$1</h5>')
+            .replace(/^\s*#{4}\s+(.+)$/gm, '<h4>$1</h4>')
+            .replace(/^\s*#{3}\s+(.+)$/gm, '<h3>$1</h3>')
+            .replace(/^\s*#{2}\s+(.+)$/gm, '<h2>$1</h2>')
+            .replace(/^\s*#{1}\s+(.+)$/gm, '<h1>$1</h1>')
             
-            // Italic text
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/_(.*?)_/g, '<em>$1</em>')
+            // Code blocks (before other formatting)
+            .replace(/```([\s\S]*?)```/g, function(match, code) {
+                return `<pre><code>${code.trim()}</code></pre>`;
+            })
             
-            // Line breaks
-            .replace(/\n\n/g, '</p><p>')
-            .replace(/\n/g, '<br>')
+            // Inline code (before bold/italic to avoid conflicts)
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
             
-            // Lists
-            .replace(/^- (.*$)/gm, '<li>$1</li>')
-            .replace(/^\* (.*$)/gm, '<li>$1</li>')
-            .replace(/^\d+\. (.*$)/gm, '<li>$1</li>');
+            // Bold text - handle both ** and __ (non-greedy)
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+            
+            // Italic text - handle both * and _ (non-greedy, avoid conflicts with bold)
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            .replace(/_([^_]+)_/g, '<em>$1</em>')
+            
+            // Links
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+            
+            // Blockquotes
+            .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+            
+            // Lists - handle both bullet and numbered
+            .replace(/^\s*[-*+] (.+)$/gm, '<li>$1</li>')
+            .replace(/^\s*\d+\. (.+)$/gm, '<li class="numbered">$1</li>');
 
-        // Wrap in paragraphs
-        if (!formatted.includes('<p>') && !formatted.includes('<h1>') && !formatted.includes('<h2>') && !formatted.includes('<h3>')) {
-            formatted = '<p>' + formatted + '</p>';
-        }
-
-        // Wrap consecutive list items in ul tags
-        formatted = formatted.replace(/(<li>.*<\/li>)(?:\s*<li>.*<\/li>)*/g, function(match) {
-            return '<ul>' + match + '</ul>';
+        // Group consecutive list items
+        formatted = formatted.replace(/(<li class="numbered">.*?<\/li>)(\s*<li class="numbered">.*?<\/li>)*/g, function(match) {
+            return '<ol>' + match.replace(/ class="numbered"/g, '') + '</ol>';
         });
+        
+        formatted = formatted.replace(/(<li>.*?<\/li>)(\s*<li>.*?<\/li>)*/g, function(match) {
+            // Only convert to ul if it's not already in ol
+            if (!match.includes('<ol>')) {
+                return '<ul>' + match + '</ul>';
+            }
+            return match;
+        });
+
+        // Handle paragraphs and line breaks
+        formatted = formatted
+            .replace(/\r\n/g, '\n')
+            .replace(/\n\s*\n/g, '\n\n') // Normalize multiple newlines
+            .split('\n\n')
+            .map(paragraph => {
+                paragraph = paragraph.trim();
+                if (!paragraph) return '';
+                
+                // Don't wrap if it's already a block element
+                if (paragraph.match(/^<(h[1-6]|ul|ol|pre|blockquote)/)) {
+                    return paragraph;
+                }
+                
+                // Convert single newlines to <br> within paragraphs
+                paragraph = paragraph.replace(/\n/g, '<br>');
+                
+                return `<p>${paragraph}</p>`;
+            })
+            .filter(p => p)
+            .join('\n');
+
+        // Clean up: remove empty paragraphs and fix spacing
+        formatted = formatted
+            .replace(/<p>\s*<\/p>/g, '')
+            .replace(/<p>(<h[1-6]>)/g, '$1')
+            .replace(/(<\/h[1-6]>)<\/p>/g, '$1')
+            .replace(/<p>(<ul>|<ol>|<pre>|<blockquote>)/g, '$1')
+            .replace(/(<\/ul>|<\/ol>|<\/pre>|<\/blockquote>)<\/p>/g, '$1')
+            .replace(/(<\/blockquote>)\s*(<blockquote>)/g, '$1$2'); // Merge consecutive blockquotes
 
         return formatted;
     }
@@ -126,10 +183,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Copy functionality
     copyBtn.addEventListener('click', function() {
-        const textToCopy = summaryText.innerText;
+        // Use the original markdown text instead of the rendered HTML
+        const textToCopy = originalSummaryText || summaryText.innerText;
+        
         navigator.clipboard.writeText(textToCopy).then(function() {
             const originalText = copyBtn.textContent;
-            copyBtn.textContent = '✓ Copied!';
+            copyBtn.textContent = '✓ Copied with Formatting!';
             copyBtn.style.background = '#4caf50';
             
             setTimeout(function() {
@@ -146,7 +205,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.body.removeChild(textarea);
             
             const originalText = copyBtn.textContent;
-            copyBtn.textContent = '✓ Copied!';
+            copyBtn.textContent = '✓ Copied with Formatting!';
             copyBtn.style.background = '#4caf50';
             
             setTimeout(function() {

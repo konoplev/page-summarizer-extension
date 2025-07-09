@@ -1,5 +1,10 @@
 // popup.js
 document.addEventListener('DOMContentLoaded', function() {
+  // Check if crossBrowser is loaded
+  if (typeof crossBrowser === 'undefined') {
+    return;
+  }
+
   const summarizeBtn = document.getElementById('summarizeBtn');
   const openSettingsLink = document.getElementById('openSettings');
   const loading = document.getElementById('loading');
@@ -9,18 +14,23 @@ document.addEventListener('DOMContentLoaded', function() {
   // Open settings page
   openSettingsLink.addEventListener('click', function(e) {
     e.preventDefault();
-    chrome.runtime.openOptionsPage();
+    crossBrowser.runtime.openOptionsPage().catch(function(error) {
+      // Fallback: try to open manually
+      const optionsUrl = crossBrowser.runtime.getURL('options.html');
+      crossBrowser.tabs.create({ url: optionsUrl });
+    });
   });
 
   summarizeBtn.addEventListener('click', async function() {
     try {
       // Load settings
-      const settings = await chrome.storage.sync.get([
+      const settings = await crossBrowser.storage.sync.get([
         'openaiApiKey',
-        'maxTokens',
+        'openaiModel',
         'includeFacts',
         'structuredFormat',
-        'autoOpen'
+        'autoOpen',
+        'translateTo'
       ]);
 
       const apiKey = settings.openaiApiKey?.trim();
@@ -39,32 +49,47 @@ document.addEventListener('DOMContentLoaded', function() {
       statusDiv.style.display = 'none';
 
       // Get the current tab
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await crossBrowser.tabs.query({ active: true, currentWindow: true });
       
       let pageContent;
       
-      try {
-        // Method 1: Try chrome.scripting.executeScript
-        const results = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: extractPageContent
-        });
-        pageContent = results[0].result;
-      } catch (scriptError) {
-        console.log('Script injection failed, trying message passing:', scriptError);
-        
-        // Method 2: Fallback to message passing
-        pageContent = await new Promise((resolve, reject) => {
-          chrome.tabs.sendMessage(tab.id, { action: 'getPageContent' }, (response) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error('Could not communicate with page. Please refresh the page and try again.'));
-            } else if (response && response.content) {
-              resolve(response.content);
-            } else {
-              reject(new Error('No content received from page'));
-            }
+      // Firefox prefers message passing, Chrome prefers script injection
+      const isFirefox = typeof browser !== 'undefined';
+      
+      if (isFirefox) {
+        // Method 1 for Firefox: Use message passing (more reliable)
+        try {
+          const response = await sendMessageWithRetry(tab.id, { action: 'getPageContent' });
+          pageContent = response.content;
+        } catch (messageError) {
+          // Fallback to script injection for Firefox
+          try {
+            const results = await crossBrowser.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: extractPageContent
+            });
+            pageContent = results[0].result;
+          } catch (scriptError) {
+            throw new Error('Could not extract content from page. Please refresh the page and try again.');
+          }
+        }
+      } else {
+        // Method 1 for Chrome: Use script injection (preferred)
+        try {
+          const results = await crossBrowser.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: extractPageContent
           });
-        });
+          pageContent = results[0].result;
+        } catch (scriptError) {
+          // Fallback to message passing for Chrome
+          try {
+            const response = await sendMessageWithRetry(tab.id, { action: 'getPageContent' });
+            pageContent = response.content;
+          } catch (messageError) {
+            throw new Error('Could not extract content from page. Please refresh the page and try again.');
+          }
+        }
       }
       
       if (!pageContent || pageContent.trim().length === 0) {
@@ -85,14 +110,14 @@ document.addEventListener('DOMContentLoaded', function() {
         };
         
         // Store the summary
-        await chrome.storage.local.set({
+        await crossBrowser.storage.local.set({
           [summaryKey]: summaryData,
           'latest_summary': summaryKey // Keep track of the latest summary
         });
         
         // Open summary in a new tab with the key as a parameter
-        const summaryUrl = chrome.runtime.getURL(`summary.html?key=${summaryKey}`);
-        await chrome.tabs.create({ url: summaryUrl });
+        const summaryUrl = crossBrowser.runtime.getURL(`summary.html?key=${summaryKey}`);
+        await crossBrowser.tabs.create({ url: summaryUrl });
         
         // Close the popup
         window.close();
@@ -104,7 +129,6 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
     } catch (error) {
-      console.error('Error:', error);
       showStatus(`Error: ${error.message}`, 'error');
     } finally {
       summarizeBtn.disabled = false;
@@ -126,17 +150,85 @@ document.addEventListener('DOMContentLoaded', function() {
 
   async function generateSummary(content, apiKey, settings) {
     // Build system prompt based on settings
-    let systemPrompt = 'You are a helpful assistant that creates comprehensive summaries of web page content.';
+    let systemPrompt = `You are an expert content analyst tasked with creating COMPREHENSIVE and COMPLETE summaries of web page content. Your goal is to ensure NO important information is missed or omitted.
+
+CRITICAL REQUIREMENTS:
+1. READ EVERY PARAGRAPH thoroughly - each paragraph likely contains unique valuable information
+2. REPRESENT EVERY MAJOR SECTION of the content in your summary
+3. DO NOT SKIP any important facts, examples, statistics, quotes, names, dates, or key details
+4. PRESERVE the logical flow and structure of the original content
+5. If the content has multiple topics/sections, ensure ALL are covered proportionally
+
+SUMMARY APPROACH:
+- Start with the main topic/purpose of the content
+- Cover each major section or argument presented
+- Include supporting evidence, examples, and data points
+- Mention key people, organizations, dates, and numbers
+- Capture conclusions, recommendations, or outcomes
+- Maintain the author's intent and emphasis`;
     
     if (settings.includeFacts !== false) {
-      systemPrompt += ' Include ALL important facts, examples, data points, quotes, and key details mentioned in the content.';
+      systemPrompt += `
+
+DETAIL LEVEL: MAXIMUM
+- Include ALL specific facts, statistics, percentages, amounts, dates
+- Preserve ALL examples, case studies, and illustrations
+- Capture ALL quotes and attributions
+- List ALL key people, organizations, products mentioned
+- Include ALL actionable items, recommendations, or conclusions`;
     }
     
     if (settings.structuredFormat !== false) {
-      systemPrompt += ' Organize the information logically with clear structure. Use bullet points, numbered lists, and headers when appropriate.';
+      systemPrompt += `
+
+FORMATTING REQUIREMENTS:
+- Use clear headers (##, ###) to organize different sections
+- Use bullet points for lists of items or key points
+- Use numbered lists for sequential steps or processes
+- Use **bold** for emphasis on critical information
+- Maintain logical hierarchy and flow`;
     }
     
-    systemPrompt += ' Keep the language concise but ensure no important information is lost. The summary should be thorough enough that someone could understand the full scope of the content without reading the original.';
+    systemPrompt += `
+
+QUALITY CHECK: Before finalizing, verify that:
+✓ Every major paragraph/section from the original is represented
+✓ No important facts or details were omitted
+✓ The summary captures the full scope and depth of the content
+✓ Someone reading only your summary would understand the complete picture
+
+Remember: It's better to include too much information than to miss something important. Comprehensive coverage is more valuable than brevity.`;
+
+    // Add translation instruction if a language is selected
+    if (settings.translateTo) {
+      const languageNames = {
+        'en': 'English',
+        'es': 'Spanish',
+        'fr': 'French', 
+        'de': 'German',
+        'it': 'Italian',
+        'pt': 'Portuguese',
+        'ru': 'Russian',
+        'uk': 'Ukrainian',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'zh': 'Chinese',
+        'ar': 'Arabic',
+        'hi': 'Hindi',
+        'nl': 'Dutch',
+        'sv': 'Swedish',
+        'da': 'Danish',
+        'no': 'Norwegian',
+        'fi': 'Finnish',
+        'pl': 'Polish',
+        'tr': 'Turkish',
+        'th': 'Thai',
+        'vi': 'Vietnamese'
+      };
+      
+      const languageName = languageNames[settings.translateTo] || settings.translateTo;
+      systemPrompt += ` IMPORTANT: Write the entire summary in ${languageName}. Translate all content to ${languageName} while maintaining the original meaning and structure.`;
+    }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -145,7 +237,7 @@ document.addEventListener('DOMContentLoaded', function() {
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: settings.openaiModel || 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -153,10 +245,16 @@ document.addEventListener('DOMContentLoaded', function() {
           },
           {
             role: 'user',
-            content: `Please summarize the following web page content:\n\n${content}`
+            content: `Please create a COMPREHENSIVE summary of the following web page content. 
+
+IMPORTANT: Ensure you cover EVERY major section and paragraph. Do not skip any important information, facts, examples, or details. Each significant part of the content should be represented in your summary.
+
+Web page content to summarize:
+
+${content}`
           }
         ],
-        max_tokens: settings.maxTokens || 2000,
+        max_tokens: 1500, // Fixed optimal length: long enough for detailed summaries, short enough to control costs
         temperature: 0.7
       })
     });
@@ -224,4 +322,21 @@ function extractPageContent() {
   }
 
   return content;
+}
+
+// Helper function to retry message passing with delay
+async function sendMessageWithRetry(tabId, message, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await crossBrowser.tabs.sendMessage(tabId, message);
+      if (response && response.content) {
+        return response;
+      }
+      throw new Error('No content in response');
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      // Wait before retrying (content script might still be loading)
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
 }

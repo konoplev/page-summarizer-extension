@@ -76,7 +76,24 @@
             transition: border-color 0.3s ease;
         }
 
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 8px;
+            font-size: 16px;
+            background: #fff;
+            transition: border-color 0.3s ease;
+            cursor: pointer;
+        }
+
         .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group select:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
@@ -127,6 +144,55 @@
             opacity: 0.6;
             cursor: not-allowed;
             transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-left: 10px;
+            margin-top: 5px;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-secondary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .model-status {
+            margin-top: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .model-status.success {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .model-status.error {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .model-status.loading {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border: 1px solid rgba(102, 126, 234, 0.3);
         }
 
         .status {
@@ -187,6 +253,91 @@
             font-size: 14px;
         }
 
+        .blog-promotion {
+            margin-top: 20px;
+        }
+
+        .blog-card {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+            border: 1px solid rgba(102, 126, 234, 0.15);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: flex-start;
+            transition: all 0.3s ease;
+        }
+
+        .blog-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
+            border-color: rgba(102, 126, 234, 0.25);
+        }
+
+        .blog-icon {
+            font-size: 24px;
+            background: rgba(102, 126, 234, 0.1);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .blog-content {
+            flex: 1;
+        }
+
+        .blog-content h3 {
+            color: #667eea;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .blog-content p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        .blog-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .blog-link:hover {
+            color: #5a6fd8;
+            text-decoration: underline;
+        }
+
+        .blog-footer {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(102, 126, 234, 0.1);
+            font-size: 12px;
+            color: #888;
+        }
+
+        .blog-site {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .blog-site:hover {
+            text-decoration: underline;
+        }
+
         @media (max-width: 600px) {
             .container {
                 margin: 10px;
@@ -195,6 +346,11 @@
 
             .header, .content {
                 padding: 20px;
+            }
+
+            .blog-card {
+                flex-direction: column;
+                text-align: center;
             }
         }
     </style>
@@ -216,18 +372,20 @@
                 </div>
             </div>
 
+            <div class="form-group">
+                <label for="openaiModel">OpenAI Model</label>
+                <input type="text" id="openaiModel" placeholder="gpt-4o-mini" value="gpt-4o-mini">
+                <button type="button" id="validateModel" class="btn-secondary">Validate Model</button>
+                <div class="help-text">
+                    Specify the OpenAI model to use for summarization. Popular options: gpt-4o-mini, gpt-4o, gpt-3.5-turbo
+                </div>
+                <div id="modelStatus" class="model-status" style="display: none;"></div>
+            </div>
+
             <div class="divider"></div>
 
             <div class="section-title">Summary Preferences</div>
             
-            <div class="form-group">
-                <label for="maxTokens">Maximum Summary Length</label>
-                <input type="number" id="maxTokens" min="500" max="4000" step="100" value="2000">
-                <div class="help-text">
-                    Higher values create longer, more detailed summaries but cost more tokens.
-                </div>
-            </div>
-
             <div class="checkbox-group">
                 <input type="checkbox" id="includeFacts" checked>
                 <label for="includeFacts">Include all facts and examples</label>
@@ -243,12 +401,65 @@
                 <label for="autoOpen">Automatically open summary in new tab</label>
             </div>
 
+            <div class="form-group">
+                <label for="translateTo">Translate Summary To:</label>
+                <select id="translateTo">
+                    <option value="">None (Original Language)</option>
+                    <option value="en">English</option>
+                    <option value="es">Spanish (Español)</option>
+                    <option value="fr">French (Français)</option>
+                    <option value="de">German (Deutsch)</option>
+                    <option value="it">Italian (Italiano)</option>
+                    <option value="pt">Portuguese (Português)</option>
+                    <option value="ru">Russian (Русский)</option>
+                    <option value="uk">Ukrainian (Українська)</option>
+                    <option value="ja">Japanese (日本語)</option>
+                    <option value="ko">Korean (한국어)</option>
+                    <option value="zh">Chinese (中文)</option>
+                    <option value="ar">Arabic (العربية)</option>
+                    <option value="hi">Hindi (हिन्दी)</option>
+                    <option value="nl">Dutch (Nederlands)</option>
+                    <option value="sv">Swedish (Svenska)</option>
+                    <option value="da">Danish (Dansk)</option>
+                    <option value="no">Norwegian (Norsk)</option>
+                    <option value="fi">Finnish (Suomi)</option>
+                    <option value="pl">Polish (Polski)</option>
+                    <option value="tr">Turkish (Türkçe)</option>
+                    <option value="th">Thai (ไทย)</option>
+                    <option value="vi">Vietnamese (Tiếng Việt)</option>
+                </select>
+                <div class="help-text">
+                    Select a language to automatically translate the summary. Leave as "None" to keep the original language.
+                </div>
+            </div>
+
             <button class="btn" id="saveBtn">💾 Save Settings</button>
             
             <div class="status hidden" id="status"></div>
+
+            <div class="divider"></div>
+
+            <div class="blog-promotion">
+                <div class="section-title">✨ Discover More</div>
+                <div class="blog-card">
+                    <div class="blog-icon">📖</div>
+                    <div class="blog-content">
+                        <h3>Explore My Blog</h3>
+                        <p>If you're using this extension, you're probably thinking about complexity. I write about complex systems, tech, and the ideas behind tools like this on my blog. Take a look!</p>
+                        <a href="https://konoplev.me/en/thoughts/post/savoring_complexity._embracing_the_infinite.html" target="_blank" class="blog-link">
+                            Read "Savoring Complexity: Embracing the Infinite" →
+                        </a>
+                        <div class="blog-footer">
+                            <span>More thoughts and insights at</span>
+                            <a href="https://konoplev.me" target="_blank" class="blog-site">konoplev.me</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
+    <script src="src/cross-browser.js"></script>
     <script src="options.js"></script>
 </body>
 </html>
