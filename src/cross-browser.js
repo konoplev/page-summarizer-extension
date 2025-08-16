@@ -209,36 +209,31 @@
       }
     },
     
-    // Scripting API (Chrome v3) compatibility
-    scripting: {
-      executeScript: function(injection) {
-        return new Promise((resolve, reject) => {
-          if (isChrome && chrome.scripting) {
-            chrome.scripting.executeScript(injection).then(resolve).catch(reject);
-          } else if (isFirefox) {
-            // Firefox fallback to tabs.executeScript
-            const tabId = injection.target.tabId;
-            const details = {
-              code: injection.func ? `(${injection.func.toString()})()` : injection.code
-            };
-            browser.tabs.executeScript(tabId, details).then(resolve).catch(reject);
-          } else {
-            // Chrome fallback for older versions
-            const tabId = injection.target.tabId;
-            const details = {
-              code: injection.func ? `(${injection.func.toString()})()` : injection.code
-            };
-            chrome.tabs.executeScript(tabId, details, (result) => {
-              if (chrome.runtime.lastError) {
-                reject(chrome.runtime.lastError);
-              } else {
-                resolve(result);
-              }
-            });
-          }
-        });
+    // Scripting API (Chrome v3) compatibility - only for Chrome
+    ...(isChrome ? {
+      scripting: {
+        executeScript: function(injection) {
+          return new Promise((resolve, reject) => {
+            if (chrome.scripting) {
+              chrome.scripting.executeScript(injection).then(resolve).catch(reject);
+            } else {
+              // Chrome fallback for older versions
+              const tabId = injection.target.tabId;
+              const details = {
+                code: injection.func ? `(${injection.func.toString()})()` : injection.code
+              };
+              chrome.tabs.executeScript(tabId, details, (result) => {
+                if (chrome.runtime.lastError) {
+                  reject(chrome.runtime.lastError);
+                } else {
+                  resolve(result);
+                }
+              });
+            }
+          });
+        }
       }
-    }
+    } : {})
   };
   
   // Extension environment setup complete

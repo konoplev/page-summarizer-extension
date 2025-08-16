@@ -66,7 +66,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Format and display summary
         const formattedSummary = formatSummary(summaryData.summary);
-        summaryText.innerHTML = formattedSummary;
+        // Sanitize HTML to prevent XSS attacks
+        const sanitizedHTML = sanitizeHTML(formattedSummary);
+        
+        // Use a completely safe approach: parse HTML manually without innerHTML
+        summaryText.textContent = ''; // Clear existing content
+        
+        // Parse the sanitized HTML and create elements manually
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(sanitizedHTML, 'text/html');
+        
+        // Move all child nodes from the parsed document to the summary text div
+        while (doc.body.firstChild) {
+          summaryText.appendChild(doc.body.firstChild);
+        }
 
         // Set up back button
         if (summaryData.url) {
@@ -179,6 +192,75 @@ document.addEventListener('DOMContentLoaded', function() {
         loading.style.display = 'none';
         error.style.display = 'block';
         errorMessage.textContent = message;
+    }
+
+    // Safe HTML sanitization without using innerHTML
+    function sanitizeHTML(html) {
+        // Define allowed tags and their attributes
+        const allowedTags = ['p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'a'];
+        const allowedAttributes = {
+            'a': ['href', 'target']
+        };
+        
+        // Simple regex-based sanitization for basic safety
+        // This is a more conservative approach that avoids innerHTML entirely
+        let sanitized = html;
+        
+        // Remove any script tags and their content
+        sanitized = sanitized.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+        
+        // Remove any style tags and their content
+        sanitized = sanitized.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+        
+        // Remove any iframe, object, embed tags
+        sanitized = sanitized.replace(/<(iframe|object|embed)[^>]*>[\s\S]*?<\/(iframe|object|embed)>/gi, '');
+        
+        // Remove any on* event handlers
+        sanitized = sanitized.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+        
+        // Remove any javascript: URLs
+        sanitized = sanitized.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, '');
+        
+        // Only allow specific tags and their attributes
+        const tagRegex = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>/g;
+        sanitized = sanitized.replace(tagRegex, function(match, slash, tagName, attributes) {
+            const lowerTagName = tagName.toLowerCase();
+            
+            // Only allow specific tags
+            if (!allowedTags.includes(lowerTagName)) {
+                return ''; // Remove disallowed tags
+            }
+            
+            // Process attributes for allowed tags
+            if (attributes && !slash) {
+                let cleanAttributes = '';
+                const attrRegex = /(\w+)\s*=\s*["']([^"']*)["']/g;
+                let attrMatch;
+                
+                while ((attrMatch = attrRegex.exec(attributes)) !== null) {
+                    const attrName = attrMatch[1].toLowerCase();
+                    const attrValue = attrMatch[2];
+                    
+                    // Check if this attribute is allowed for this tag
+                    if (allowedAttributes[lowerTagName] && allowedAttributes[lowerTagName].includes(attrName)) {
+                        // Additional validation for href attributes
+                        if (attrName === 'href') {
+                            if (attrValue.startsWith('http://') || attrValue.startsWith('https://')) {
+                                cleanAttributes += ` ${attrName}="${attrValue}"`;
+                            }
+                        } else {
+                            cleanAttributes += ` ${attrName}="${attrValue}"`;
+                        }
+                    }
+                }
+                
+                return `<${slash}${tagName}${cleanAttributes}>`;
+            }
+            
+            return `<${slash}${tagName}>`;
+        });
+        
+        return sanitized;
     }
 
     // Copy functionality

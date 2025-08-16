@@ -23,16 +23,41 @@ async function buildFirefox() {
       'content.js',
       'summary.html',
       'summary.js',
-      'icons'
+      'src/cross-browser.js'
     ];
     
     for (const file of filesToCopy) {
       const sourcePath = path.join(sourceDir, file);
-      const destPath = path.join(distDir, file);
+      let destPath = path.join(distDir, file);
       
       if (await fs.pathExists(sourcePath)) {
+        // Handle src directory files
+        if (file.startsWith('src/')) {
+          const fileName = path.basename(file);
+          destPath = path.join(distDir, fileName);
+        }
+        
         await fs.copy(sourcePath, destPath);
         console.log(`✓ Copied ${file}`);
+      }
+    }
+    
+    // Copy icons directory, excluding hidden files
+    const iconsSourcePath = path.join(sourceDir, 'icons');
+    const iconsDestPath = path.join(distDir, 'icons');
+    
+    if (await fs.pathExists(iconsSourcePath)) {
+      await fs.ensureDir(iconsDestPath);
+      const iconFiles = await fs.readdir(iconsSourcePath);
+      
+      for (const iconFile of iconFiles) {
+        // Skip hidden files (starting with .)
+        if (!iconFile.startsWith('.')) {
+          const sourceIconPath = path.join(iconsSourcePath, iconFile);
+          const destIconPath = path.join(iconsDestPath, iconFile);
+          await fs.copy(sourceIconPath, destIconPath);
+          console.log(`✓ Copied icons/${iconFile}`);
+        }
       }
     }
     
@@ -63,7 +88,10 @@ async function buildFirefox() {
         "default_popup": "popup.html",
         "default_title": "Summarize Page"
       },
-      "options_page": "options.html",
+      "options_ui": {
+        "page": "options.html",
+        "open_in_tab": true
+      },
       "icons": {
         "16": "icons/icon16.png",
         "48": "icons/icon48.png",
@@ -73,7 +101,7 @@ async function buildFirefox() {
       "browser_specific_settings": {
         "gecko": {
           "id": "page-summarizer@konoplev.me",
-          "strict_min_version": "57.0"
+          "strict_min_version": "58.0"
         }
       }
     };
@@ -81,7 +109,7 @@ async function buildFirefox() {
     await fs.writeJson(path.join(distDir, 'manifest.json'), firefoxManifest, { spaces: 2 });
     console.log('✓ Created Firefox manifest.json');
     
-    // Update JavaScript for Firefox compatibility
+    // Update JavaScript for Firefox compatibility (exclude cross-browser.js as it handles compatibility internally)
     const jsFiles = [
       path.join(distDir, 'popup.js'),
       path.join(distDir, 'options.js'),
@@ -98,26 +126,7 @@ async function buildFirefox() {
           to: 'chrome.browserAction'
         });
         
-        await replaceInFile({
-          files: jsFile,
-          from: /chrome\.scripting\.executeScript/g,
-          to: 'browser.tabs.executeScript'
-        });
-        
-        // Add browser compatibility layer
-        const content = await fs.readFile(jsFile, 'utf8');
-        const compatLayer = `
-// Firefox compatibility layer
-if (typeof browser !== 'undefined') {
-  var chrome = browser;
-}
-if (chrome.browserAction) {
-  chrome.action = chrome.browserAction;
-}
-
-${content}`;
-        
-        await fs.writeFile(jsFile, compatLayer);
+        // Note: Removed chrome.scripting.executeScript replacement as cross-browser.js handles this properly
       }
     }
     
@@ -132,6 +141,16 @@ ${content}`;
     }
     
     console.log('✓ Applied Firefox compatibility patches');
+    
+    // Clean up any hidden files that might have been created
+    const hiddenFiles = await fs.readdir(distDir, { withFileTypes: true });
+    for (const file of hiddenFiles) {
+      if (file.name.startsWith('.') && file.isFile()) {
+        await fs.remove(path.join(distDir, file.name));
+        console.log(`✓ Removed hidden file: ${file.name}`);
+      }
+    }
+    
     console.log('🎉 Firefox extension built successfully in dist/firefox/');
     
   } catch (error) {

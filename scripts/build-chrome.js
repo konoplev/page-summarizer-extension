@@ -23,16 +23,41 @@ async function buildChrome() {
       'content.js',
       'summary.html',
       'summary.js',
-      'icons'
+      'src/cross-browser.js'
     ];
     
     for (const file of filesToCopy) {
       const sourcePath = path.join(sourceDir, file);
-      const destPath = path.join(distDir, file);
+      let destPath = path.join(distDir, file);
       
       if (await fs.pathExists(sourcePath)) {
+        // Handle src directory files
+        if (file.startsWith('src/')) {
+          const fileName = path.basename(file);
+          destPath = path.join(distDir, fileName);
+        }
+        
         await fs.copy(sourcePath, destPath);
         console.log(`✓ Copied ${file}`);
+      }
+    }
+    
+    // Copy icons directory, excluding hidden files
+    const iconsSourcePath = path.join(sourceDir, 'icons');
+    const iconsDestPath = path.join(distDir, 'icons');
+    
+    if (await fs.pathExists(iconsSourcePath)) {
+      await fs.ensureDir(iconsDestPath);
+      const iconFiles = await fs.readdir(iconsSourcePath);
+      
+      for (const iconFile of iconFiles) {
+        // Skip hidden files (starting with .)
+        if (!iconFile.startsWith('.')) {
+          const sourceIconPath = path.join(iconsSourcePath, iconFile);
+          const destIconPath = path.join(iconsDestPath, iconFile);
+          await fs.copy(sourceIconPath, destIconPath);
+          console.log(`✓ Copied icons/${iconFile}`);
+        }
       }
     }
     
@@ -88,6 +113,15 @@ async function buildChrome() {
       from: /browser\./g,
       to: 'chrome.'
     });
+    
+    // Clean up any hidden files that might have been created
+    const hiddenFiles = await fs.readdir(distDir, { withFileTypes: true });
+    for (const file of hiddenFiles) {
+      if (file.name.startsWith('.') && file.isFile()) {
+        await fs.remove(path.join(distDir, file.name));
+        console.log(`✓ Removed hidden file: ${file.name}`);
+      }
+    }
     
     console.log('🎉 Chrome extension built successfully in dist/chrome/');
     

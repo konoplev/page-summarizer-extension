@@ -1,5 +1,7 @@
 # Page Summarizer Extension (Chrome & Firefox)
 
+> **🤖 AI-Generated Extension**: This entire extension was completely coded by AI (Claude Sonnet 4) as an experiment to see if a fully functional browser extension could be implemented without human intervention.
+
 A cross-browser extension that summarizes web page content using OpenAI's API with advanced customization options. Compatible with Chrome, Firefox, and other major browsers.
 
 ## Features

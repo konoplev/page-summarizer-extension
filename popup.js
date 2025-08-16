@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!apiKey) {
         showStatus('Please configure your OpenAI API key in settings', 'error');
         setTimeout(() => {
-          chrome.runtime.openOptionsPage();
+          crossBrowser.runtime.openOptionsPage();
         }, 2000);
         return;
       }
@@ -123,7 +123,21 @@ document.addEventListener('DOMContentLoaded', function() {
         window.close();
       } else {
         // Display summary in popup (for users who disabled auto-open)
-        summaryDiv.innerHTML = formatSummary(summary);
+        const formattedSummary = formatSummary(summary);
+        const sanitizedHTML = sanitizeHTML(formattedSummary);
+        
+        // Use a completely safe approach: parse HTML manually without innerHTML
+        summaryDiv.textContent = ''; // Clear existing content
+        
+        // Parse the sanitized HTML and create elements manually
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(sanitizedHTML, 'text/html');
+        
+        // Move all child nodes from the parsed document to the summary div
+        while (doc.body.firstChild) {
+          summaryDiv.appendChild(doc.body.firstChild);
+        }
+        
         summaryDiv.style.display = 'block';
         showStatus('Summary generated successfully!', 'success');
       }
@@ -268,9 +282,163 @@ ${content}`
     return data.choices[0].message.content;
   }
 
+  // Safe HTML sanitization without using innerHTML
+  function sanitizeHTML(html) {
+    // Define allowed tags and their attributes
+    const allowedTags = ['p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'a'];
+    const allowedAttributes = {
+      'a': ['href', 'target']
+    };
+    
+    // Simple regex-based sanitization for basic safety
+    // This is a more conservative approach that avoids innerHTML entirely
+    let sanitized = html;
+    
+    // Remove any script tags and their content
+    sanitized = sanitized.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+    
+    // Remove any style tags and their content
+    sanitized = sanitized.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    
+    // Remove any iframe, object, embed tags
+    sanitized = sanitized.replace(/<(iframe|object|embed)[^>]*>[\s\S]*?<\/(iframe|object|embed)>/gi, '');
+    
+    // Remove any on* event handlers
+    sanitized = sanitized.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+    
+    // Remove any javascript: URLs
+    sanitized = sanitized.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, '');
+    
+    // Only allow specific tags and their attributes
+    const tagRegex = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>/g;
+    sanitized = sanitized.replace(tagRegex, function(match, slash, tagName, attributes) {
+      const lowerTagName = tagName.toLowerCase();
+      
+      // Only allow specific tags
+      if (!allowedTags.includes(lowerTagName)) {
+        return ''; // Remove disallowed tags
+      }
+      
+      // Process attributes for allowed tags
+      if (attributes && !slash) {
+        let cleanAttributes = '';
+        const attrRegex = /(\w+)\s*=\s*["']([^"']*)["']/g;
+        let attrMatch;
+        
+        while ((attrMatch = attrRegex.exec(attributes)) !== null) {
+          const attrName = attrMatch[1].toLowerCase();
+          const attrValue = attrMatch[2];
+          
+          // Check if this attribute is allowed for this tag
+          if (allowedAttributes[lowerTagName] && allowedAttributes[lowerTagName].includes(attrName)) {
+            // Additional validation for href attributes
+            if (attrName === 'href') {
+              if (attrValue.startsWith('http://') || attrValue.startsWith('https://')) {
+                cleanAttributes += ` ${attrName}="${attrValue}"`;
+              }
+            } else {
+              cleanAttributes += ` ${attrName}="${attrValue}"`;
+            }
+          }
+        }
+        
+        return `<${slash}${tagName}${cleanAttributes}>`;
+      }
+      
+      return `<${slash}${tagName}>`;
+    });
+    
+    return sanitized;
+  }
+
   function formatSummary(summary) {
-    // Simple formatting: convert line breaks to HTML breaks
-    return summary.replace(/\n/g, '<br>');
+    // Convert markdown-like formatting to HTML
+    let formatted = summary
+      // Escape HTML characters first (but preserve intentional HTML)
+      .replace(/&(?!amp;|lt;|gt;|quot;|#39;)/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      
+      // Headers (must be at start of line with optional whitespace) - handle all levels
+      // Process from most specific (6 #) to least specific (1 #) to avoid conflicts
+      .replace(/^\s*#{6}\s+(.+)$/gm, '<h6>$1</h6>')
+      .replace(/^\s*#{5}\s+(.+)$/gm, '<h5>$1</h5>')
+      .replace(/^\s*#{4}\s+(.+)$/gm, '<h4>$1</h4>')
+      .replace(/^\s*#{3}\s+(.+)$/gm, '<h3>$1</h3>')
+      .replace(/^\s*#{2}\s+(.+)$/gm, '<h2>$1</h2>')
+      .replace(/^\s*#{1}\s+(.+)$/gm, '<h1>$1</h1>')
+      
+      // Code blocks (before other formatting)
+      .replace(/```([\s\S]*?)```/g, function(match, code) {
+          return `<pre><code>${code.trim()}</code></pre>`;
+      })
+      
+      // Inline code (before bold/italic to avoid conflicts)
+      .replace(/`([^`]+)`/, '<code>$1</code>')
+      
+      // Bold text - handle both ** and __ (non-greedy)
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+      
+      // Italic text - handle both * and _ (non-greedy, avoid conflicts with bold)
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/_([^_]+)_/g, '<em>$1</em>')
+      
+      // Links
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+      
+      // Blockquotes
+      .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+      
+      // Lists - handle both bullet and numbered
+      .replace(/^\s*[-*+] (.+)$/gm, '<li>$1</li>')
+      .replace(/^\s*\d+\. (.+)$/gm, '<li class="numbered">$1</li>');
+
+    // Group consecutive list items
+    formatted = formatted.replace(/(<li class="numbered">.*?<\/li>)(\s*<li class="numbered">.*?<\/li>)*/g, function(match) {
+        return '<ol>' + match.replace(/ class="numbered"/g, '') + '</ol>';
+    });
+    
+    formatted = formatted.replace(/(<li>.*?<\/li>)(\s*<li>.*?<\/li>)*/g, function(match) {
+        // Only convert to ul if it's not already in ol
+        if (!match.includes('<ol>')) {
+            return '<ul>' + match + '</ul>';
+        }
+        return match;
+    });
+
+    // Handle paragraphs and line breaks
+    formatted = formatted
+        .replace(/\r\n/g, '\n')
+        .replace(/\n\s*\n/g, '\n\n') // Normalize multiple newlines
+        .split('\n\n')
+        .map(paragraph => {
+            paragraph = paragraph.trim();
+            if (!paragraph) return '';
+            
+            // Don't wrap if it's already a block element
+            if (paragraph.match(/^<(h[1-6]|ul|ol|pre|blockquote)/)) {
+                return paragraph;
+            }
+            
+            // Convert single newlines to <br> within paragraphs
+            paragraph = paragraph.replace(/\n/g, '<br>');
+            
+            return `<p>${paragraph}</p>`;
+        })
+        .filter(p => p)
+        .join('\n');
+
+    // Clean up: remove empty paragraphs and fix spacing
+    formatted = formatted
+        .replace(/<p>\s*<\/p>/g, '')
+        .replace(/<p>(<h[1-6]>)/g, '$1')
+        .replace(/(<\/h[1-6]>)<\/p>/g, '$1')
+        .replace(/<p>(<ul>|<ol>|<pre>|<blockquote>)/g, '$1')
+        .replace(/(<\/ul>|<\/ol>|<\/pre>|<\/blockquote>)<\/p>/g, '$1')
+        .replace(/(<\/blockquote>)\s*(<blockquote>)/g, '$1$2'); // Merge consecutive blockquotes
+
+    return formatted;
   }
 });
 
